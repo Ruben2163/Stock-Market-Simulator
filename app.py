@@ -1,11 +1,12 @@
 from flask import Flask, render_template, request, redirect, flash, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
+from datetime import datetime
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///game.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'your-secret-key'  # Replace later
+app.config['SECRET_KEY'] = 'your-secret-key'
 
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
@@ -29,6 +30,18 @@ class Stock(db.Model):
 
     def __repr__(self):
         return f'<Stock {self.ticker}>'
+
+class Transaction(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    stock_id = db.Column(db.Integer, db.ForeignKey('stock.id'), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False)
+    price = db.Column(db.Float, nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    stock = db.relationship('Stock', backref='transactions')  # Add this line
+
+    def __repr__(self):
+        return f'<Transaction {self.user_id} {self.stock_id}>'
 
 @app.route('/')
 def home():
@@ -70,24 +83,56 @@ def login():
             return redirect('/login')
     return render_template('login.html')
 
-@app.route('/market')
-def market():
-    if 'user_id' not in session:
-        flash('Please log in to view the market.', 'error')
-        return redirect('/login')
-    stocks = Stock.query.all()
-    return render_template('market.html', stocks=stocks)
-
 @app.route('/logout')
 def logout():
     session.pop('user_id', None)
     flash('Logged out successfully.', 'success')
     return redirect('/')
 
+@app.route('/market', methods=['GET', 'POST'])
+def market():
+    if 'user_id' not in session:
+        flash('Please log in to view the market.', 'error')
+        return redirect('/login')
+    user = User.query.get(session['user_id'])
+    stocks = Stock.query.all()
+
+    if request.method == 'POST':
+        stock_id = request.form['stock_id']
+        quantity = int(request.form['quantity'])
+        stock = Stock.query.get(stock_id)
+
+        total_cost = stock.current_price * quantity
+        if user.cash < total_cost:
+            flash('Not enough cash!', 'error')
+        else:
+            user.cash -= total_cost
+            transaction = Transaction(
+                user_id=user.id,
+                stock_id=stock.id,
+                quantity=quantity,
+                price=stock.current_price
+            )
+            db.session.add(transaction)
+            db.session.commit()
+            flash(f'Bought {quantity} shares of {stock.ticker}!', 'success')
+
+        return redirect('/market')
+
+    return render_template('market.html', stocks=stocks, user=user)
+
+@app.route('/portfolio')
+def portfolio():
+    if 'user_id' not in session:
+        flash('Please log in to view your portfolio.', 'error')
+        return redirect('/login')
+    user = User.query.get(session['user_id'])
+    transactions = Transaction.query.filter_by(user_id=user.id).all()
+    return render_template('portfolio.html', transactions=transactions, user=user)
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-        # Add fake stocks if none exist
         if not Stock.query.first():
             stocks = [
                 Stock(ticker='AAPL', name='Apple Inc.', sector='Tech', current_price=150.00),
