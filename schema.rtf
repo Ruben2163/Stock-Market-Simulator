@@ -1,0 +1,21 @@
+User:
+- id (integer, primary key)
+- username (string, unique)
+- password (string)
+- cash (float, default 10000.0)
+- email (string)
+
+Stock:
+- id (integer, primary key)
+- ticker (string, unique)
+- name (string)
+- sector (string)
+- current_price (float)
+
+Transaction:
+- id (integer, primary key)
+- user_id (integer, foreign key)
+- stock_id (integer, foreign key)
+- quantity (integer)
+- price (float)
+- timestamp (datetime)
