@@ -1,2 +1,3 @@
 # Stock-Market-Simulator
-A stock market simulator
+
+A simulation of the stock market
