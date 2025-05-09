@@ -5,7 +5,7 @@ from flask_bcrypt import Bcrypt
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///game.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'your-secret-key'  # Replace with a random string
+app.config['SECRET_KEY'] = 'your-secret-key'  # Replace later
 
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
@@ -19,6 +19,16 @@ class User(db.Model):
 
     def __repr__(self):
         return f'<User {self.username}>'
+
+class Stock(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    ticker = db.Column(db.String(10), unique=True, nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    sector = db.Column(db.String(50), nullable=False)
+    current_price = db.Column(db.Float, nullable=False)
+
+    def __repr__(self):
+        return f'<Stock {self.ticker}>'
 
 @app.route('/')
 def home():
@@ -54,13 +64,36 @@ def login():
         if user and bcrypt.check_password_hash(user.password, password):
             session['user_id'] = user.id
             flash('Logged in successfully!', 'success')
-            return redirect('/market')  # Placeholder for market page
+            return redirect('/market')
         else:
             flash('Invalid username or password.', 'error')
             return redirect('/login')
     return render_template('login.html')
 
+@app.route('/market')
+def market():
+    if 'user_id' not in session:
+        flash('Please log in to view the market.', 'error')
+        return redirect('/login')
+    stocks = Stock.query.all()
+    return render_template('market.html', stocks=stocks)
+
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    flash('Logged out successfully.', 'success')
+    return redirect('/')
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
+        # Add fake stocks if none exist
+        if not Stock.query.first():
+            stocks = [
+                Stock(ticker='AAPL', name='Apple Inc.', sector='Tech', current_price=150.00),
+                Stock(ticker='TSLA', name='Tesla Inc.', sector='Auto', current_price=700.00),
+                Stock(ticker='GOOGL', name='Google', sector='Tech', current_price=2500.00)
+            ]
+            db.session.add_all(stocks)
+            db.session.commit()
     app.run(debug=True)
